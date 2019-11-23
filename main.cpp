@@ -3,7 +3,7 @@
 #include <stdio.h>
 #include <vector>
 #include <sstream>
-
+#include <thread>
 
 using namespace std;
 
@@ -12,7 +12,9 @@ vector<node*> getNodes(string a);
 void initTreeHelper(node *current, node *next);
 node* initTree(vector<node*> pre);
 void readfile(string path);
-
+bool search(int key);
+node* insertHelper(node *root, node *a);
+void printTree(node* treeRoot);
 
  struct node
  {
@@ -23,6 +25,9 @@ void readfile(string path);
      bool color;  //false:black true:red
      mutex m;
  };
+
+ node *root = new node;
+
 
  //get all nodes separate from each line and init value for those nodes.
 vector<node*> getNodes(string a){
@@ -72,22 +77,24 @@ vector<node*> getNodes(string a){
 // decide add the next node on left or right. or back to parent node
 void initTreeHelper(node *current, node *next){
 
-    if (*&current->key!=-1 && *&current->left == nullptr){
+    if (current->key!=-1 && current->left == nullptr){
         current->left = next;
         next->parent = current;
     }
-    else if (*&current->key!=-1 && *&current->left != nullptr && *&current->right == nullptr){
+    else if (current->key!=-1 && current->left != nullptr && current->right == nullptr){
         current->right = next;
         next->parent = current;
     }
-    else if(*&current->key==-1 || (*&current->left != nullptr && *&current->right != nullptr)){
-        if(*&current->parent!=nullptr){
-            *&current = *&current->parent;
+    else if(current->key==-1 || (current->left != nullptr && current->right != nullptr)){
+        if(current->parent!=nullptr){
+            current = *&current->parent;
         }
-        initTreeHelper(*&current,*&next);
+        initTreeHelper(current,next);
     }
 }
 
+
+// init the RB-tree based on the init text input
 node* initTree(vector<node*> pre){
     int index = 0;
     while(index < pre.size()-1){
@@ -100,19 +107,9 @@ node* initTree(vector<node*> pre){
     return pre[0];
 }
 
-void printTree(node* treeRoot){
-    if (treeRoot == NULL){
-        return;
-    }
-    if(treeRoot->key==-1){
-        cout << "f" << " ";
-    }else{
-        cout << treeRoot->key << " ";
-    }
-    printTree(treeRoot->left);
-    printTree(treeRoot->right);
-}
 
+
+//read the inpur file
 void readfile(string path){
     string line;
     string nodeLines;
@@ -135,16 +132,97 @@ void readfile(string path){
             }
         }
     vector<node*> initNodes = getNodes(nodeLines);
-        node* root = initTree(initNodes);
-    printTree(root);
+        root = initTree(initNodes);
     file.close();
 }
 
+// search the node, if found return true, otherwise return false
+bool search(int key) {
+    node *tempRoot = root;
+    if(tempRoot->key==-1){
+        return false;
+    }
+    while(tempRoot->key!=-1){
+        if(tempRoot->key==key){
+            return true;
+        }else if(key>=tempRoot->key){
+            tempRoot = tempRoot->right;
+        }else{
+            tempRoot = tempRoot->left;
+        }
+    }
+    return false;
+}
+
+//helper function for insert the node as BST
+node* insertHelper(node *root, node *a){
+
+    if(root == NULL){
+        return a;
+    }
+    if(a->key < root->key){
+        root->left = insertHelper(root->left,a);
+        root->left->parent = root;
+    }else if(a->key > root->key){
+        root->right = insertHelper(root->right,a);
+        root->right->parent = root;
+    }
+    return root;
+}
+
+//rotateLeft
+void rotateLeft(node *&root, node *&pt)
+{
+    node *pt_right = pt->right;
+
+    pt->right = pt_right->left;
+
+    if (pt->right != NULL)
+        pt->right->parent = pt;
+
+    pt_right->parent = pt->parent;
+
+    if (pt->parent == NULL)
+        root = pt_right;
+
+    else if (pt == pt->parent->left)
+        pt->parent->left = pt_right;
+
+    else
+        pt->parent->right = pt_right;
+
+    pt_right->left = pt;
+    pt->parent = pt_right;
+}
 
 int main()
 {
-    readfile("/Users/lyiming/CLionProjects/cs352/test.txt");
+    string fileName;
+    cout << "please enter the file name: ";
+    cin >> fileName;
+    readfile(fileName);
 
+    printTree(root);
     return 0;
+}
 
+//utility function to print the RB-tree in pre-order
+void printTree(node* treeRoot){
+    if (treeRoot == NULL){
+        return;
+    }
+    if(treeRoot->key==-1){
+        cout << "f" << " ";
+    }
+    else{
+        char c;
+        if(treeRoot->color==true){
+            c = 'r';
+        }else{
+            c = 'b';
+        }
+        cout << treeRoot->key<< c << " ";
+    }
+    printTree(treeRoot->left);
+    printTree(treeRoot->right);
 }
