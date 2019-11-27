@@ -137,21 +137,53 @@ void readfile(string path){
 }
 
 // search the node, if found return true, otherwise return false
+// lock necessary nodes and unlock after
 bool search(int key) {
+    bool found = false;
     node *tempRoot = root;
+    tempRoot->m.lock();
     if(tempRoot->key==-1){
-        return false;
+        tempRoot->m.unlock();
+        return found;
     }
-    while(tempRoot->key!=-1){
+    while(tempRoot->key!=-1 && found==false){
+        node *parent = tempRoot;
         if(tempRoot->key==key){
-            return true;
+            return found;
         }else if(key>=tempRoot->key){
             tempRoot = tempRoot->right;
         }else{
             tempRoot = tempRoot->left;
         }
+        tempRoot->m.lock();
+        parent->m.unlock();
     }
-    return false;
+    tempRoot->m.unlock();
+    return found;
+}
+
+// insert function with lock
+void insert(int key){
+    bool found = false;
+    node *tempNode = root;
+    tempNode->m.lock();
+    node *locked = tempNode;
+    while(tempNode->key!=-1 && found==false){
+        node *parent = tempNode;
+        if(key == tempNode->key){
+            found = true;
+        }else if(key < tempNode->key){
+            tempNode = tempNode->left;
+        }else{
+            tempNode = tempNode->right;
+        }
+        if(tempNode->color==false && parent->color ==false && parent!=locked){
+            parent->m.lock();
+            locked->m.unlock();
+            locked = parent;
+        }
+    }
+
 }
 
 //helper function for insert the node as BST
@@ -201,7 +233,6 @@ int main()
     cout << "please enter the file name: ";
     cin >> fileName;
     readfile(fileName);
-
     printTree(root);
     return 0;
 }
