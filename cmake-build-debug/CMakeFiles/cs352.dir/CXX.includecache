@@ -17,6 +17,10 @@ vector
 -
 sstream
 -
-thread
+pthread.h
+-
+regex
+-
+mutex
 -
 

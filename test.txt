@@ -1,1 +1,8 @@
-7b,3b,f,f,18r,10b,8r,f,f,11r,f,f,22b,f,26r,f,f
+45b,1b,f,34r,f,f,97b,f,110r,f,f
+
+thread1
+thread2
+thread3
+
+thread1, search(45)  || thread3, insert(80) || thread3, search(1) ||
+thread1, search(80)  || thread2, search(80)
