@@ -6,7 +6,10 @@
 #include <pthread.h>
 #include <regex>
 #include <mutex>
+#include <queue>
 
+
+#include <unistd.h>
 /**
  * @author yiming ling
  * wrote based on the original request
@@ -26,8 +29,7 @@ void* deleteNode(void* key);
 void printTree(node* treeRoot);
 void runFunctions(string a);
 
-typedef void* (*fptr)(void* key);
-fptr getFunction(string a);
+
 /**
  * node structure
  */
@@ -41,9 +43,19 @@ fptr getFunction(string a);
      mutex m;
  };
 
+
+ struct Command
+ {
+     string function;
+     int key;
+ };
+
 string functions = ""; // For getting all functions
 node *root = new node; // For identify the entire tree
-vector<pthread_t> threads; // For multi threads
+queue <pthread_t> search_threads; // For all search threads
+queue <pthread_t> modify_threads; // For all modify threads
+queue <Command> searches; // For all search commands
+queue <Command> modifies; // For all modify commands
 
 /**
  * get all nodes separate from each line and init value for those nodes.
@@ -59,7 +71,7 @@ vector<node*> getNodes(string a){
         getline(s_stream, substr, ',');
         tempNodes.push_back(substr);
     }
-    for(uint16_t i=0;i<tempNodes.size();i++) {
+    for(uint16_t i=0;i<tempNodes.size();++i) {
         if (tempNodes[i][0] == 'f') {
             node *newNode = new node;
             newNode->key = -1;
@@ -138,52 +150,54 @@ node* initTree(vector<node*> pre){
  * @param (string)a
  */
 
-int tempI;
-void runFunctions(string a){
-    vector<string> actions;
-    while(a.size()>0) {
-        smatch m;
-        regex_search(a, m, regex("[a-z0-9]+"));
-        string temp = m.str(0);
 
-        a = a.substr(temp.size()+1,a.size());
-        char temp2 = a[0];
-        if(a[0]=='|'){
-            a = a.substr(2,a.size());
+void runFunctions(){
+
+    while(searches.size()>0) {
+        pthread_t pid = search_threads.front();
+        int b = pthread_create(&pid, NULL, search, (void *) &searches.front().key);
+        search_threads.pop();
+        search_threads.push(pid);
+        searches.pop();
+    }
+
+    const int size = search_threads.size();
+    for(int i=0;i<size;++i){
+        char* msg=NULL;
+        pthread_t pid = search_threads.front();
+        pthread_join(pid,(void**)&msg);
+        if(msg){
+            cout << msg << endl;
         }
-        actions.push_back(temp);
+        search_threads.pop();
     }
 
-    for(int i=0;i<actions.size();i+=3){
-        tempI = stoi(actions[i].substr(6,actions[i].size()));
-        int tempKey = stoi(actions[i+2]);
-        string tempS = actions[i+1];
-        fptr function = getFunction(tempS);
-        pthread_create(&threads[tempI-1], NULL, function, (void*)&tempKey);
-        pthread_join(threads[tempI-1],NULL);
+    if(searches.size()==0){
+        while(modifies.size()>0){
+            pthread_t pid = modify_threads.front();
+            if(modifies.front().function=="delete"){
+                int b = pthread_create(&pid, NULL, deleteNode, (void *) &modifies.front().key);
+            }else{
+                int * arg = (int *)malloc(sizeof(*arg));
+                *arg = modifies.front().key;
+                int b = pthread_create(&pid, NULL, insert, (void *) arg);
+            }
+            modify_threads.pop();
+            modify_threads.push(pid);
+            modifies.pop();
+        }
 
+        const int size2 = modify_threads.size();
+        for(int i=0;i<size2;++i){
+            pthread_t pid = search_threads.front();
+            pthread_join(pid,NULL);
+            modify_threads.pop();
+        }
     }
 
-
-    /**
-     * debug purpose
-     */
-//     cout << actions.size()<<endl;
-//    for(int j=0;j<actions.size();j++){
-//        cout << actions[j] << endl;
-//    }
 }
 
 
-fptr getFunction(string a){
-    if(a=="insert"){
-        return insert;
-    }else if(a=="search"){
-        return search;
-    }else{
-        return deleteNode;
-    }
-}
 
 /**
  * Read the input file
@@ -195,7 +209,8 @@ void readfile(string path){
     ifstream file;
     file.open(path);
     int count = 0;
-    int number_of_thread = 0;
+    int number_of_search_thread = 0;
+    int number_of_modify_thread = 0;
     if(file.is_open())
         while (!file.eof())
         {
@@ -208,7 +223,25 @@ void readfile(string path){
                 continue;
             }
             if(line!="" && count == 1){
-                number_of_thread += 1;  // read how many threads was there
+               if(line[0]=='S'){
+                   smatch m;
+                   regex_search(line, m, regex("[0-9]+"));
+                   string temp = m.str(0);
+                   number_of_search_thread = stoi(temp);
+                   pthread_t tid[number_of_search_thread];
+                   for(int i=0;i<number_of_search_thread;++i){
+                       search_threads.push(tid[i]);
+                   }
+               }else{
+                   smatch m;
+                   regex_search(line, m, regex("[0-9]+"));
+                   string temp = m.str(0);
+                   number_of_modify_thread = stoi(temp);
+                   pthread_t tid[number_of_modify_thread];
+                   for(int i=0;i<number_of_modify_thread;++i){
+                       modify_threads.push(tid[i]);
+                   }
+               }
             }
             if(line!="" && count == 2){
                 functions = functions + line;  // read all the functions
@@ -216,9 +249,34 @@ void readfile(string path){
                 functions.erase(end_pos, functions.end());
             }
         }
+    vector<string> tempCommands;
+    while(functions.size()>0) {
+        smatch m;
+        regex_search(functions, m, regex("[a-z0-9]+"));
+        string temp = m.str(0);
+
+        functions = functions.substr(temp.size()+1,functions.size());
+        char temp2 = functions[0];
+        if(functions[0]=='|'){
+            functions = functions.substr(2,functions.size());
+        }
+        tempCommands.push_back(temp);
+    }
+
+    for(int i=0;i<tempCommands.size();i+=2){
+        Command c;
+        c.function = tempCommands[i];
+        c.key = stoi(tempCommands[i+1]);
+        if(tempCommands[i]=="search"){
+            searches.push(c);
+        }else{
+            modifies.push(c);
+        }
+    }
+
     vector<node*> initNodes = getNodes(nodeLines);
-        root = initTree(initNodes);
-        threads.resize(number_of_thread);
+    root = initTree(initNodes);
+
     file.close();
 }
 
@@ -235,17 +293,26 @@ void* search(void* key) {
     tempRoot->m.lock();
     if(tempRoot->key==-1){
         tempRoot->m.unlock();
-        cout << "thread" << tempI << ", " << "search( " << val << " )";
-        cout << "-> false" << endl;
-        return ((void*)&found);
+        string f = "search(" ;
+        string n = to_string(val);
+        string f2 = ")-> false, performed by thread ";
+        string id = to_string(pthread_self()->__sig);
+        string output = f+n+f2+id;
+        char* realOutput = strdup(output.c_str());
+        return (realOutput);
+
     }
     while(tempRoot->key!=-1 && found==false){
         node *parent = tempRoot;
         if(tempRoot->key==val){
             tempRoot->m.unlock();
-            cout << "thread" << tempI << ", " << "search( " << val << " )";
-            cout << "-> true" << endl;
-            return ((void*)&found);
+            string f = "search(" ;
+            string n = to_string(val);
+            string f2 = ")-> true, performed by thread ";
+            string id = to_string(pthread_self()->__sig);
+            string output = f+n+f2+id;
+            char* realOutput = strdup(output.c_str());
+            return (realOutput);
         }else if(val>=tempRoot->key){
             tempRoot = tempRoot->right;
         }else{
@@ -255,9 +322,13 @@ void* search(void* key) {
         parent->m.unlock();
     }
     tempRoot->m.unlock();
-    cout << "thread" << tempI << ", " << "search( " << val << " )";
-    cout << "-> false" << endl;
-    return ((void*)&found);
+    string f = "search(" ;
+    string n = to_string(val);
+    string f2 = ")-> false, performed by thread ";
+    string id = to_string(pthread_self()->__sig);
+    string output = f+n+f2+id;
+    char* realOutput = strdup(output.c_str());
+    return (realOutput);
 }
 
 void* deleteNode(void* key){
@@ -271,6 +342,7 @@ void* deleteNode(void* key){
  */
 void* insert(void* key){
     int val = *(int*)key;
+    free(key);
     bool found = false;
     node *tempNode = root;
     tempNode->m.lock();
@@ -312,7 +384,7 @@ void* insert(void* key){
         rightNode->parent = tempNode;
         rightNode->color = false;
 
-        tempNode->left = rightNode;
+        tempNode->right = rightNode;
         tempNode->m.unlock();
 
         while(tempNode!=root && tempNode->parent->color == true){
@@ -452,7 +524,7 @@ void* insert(void* key){
                     leftNode = tempNode->left;
                     rightNode = tempNode->right;
                     if(grandparent == root){
-                        grandparent->m.lock();
+                        grandparent->m.try_lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
@@ -509,18 +581,15 @@ int main()
     string fileName;
     cout << "please enter the file name: ";
     cin >> fileName;
-
-
     readfile(fileName);  // read the init tree and all actions
-
-
     cout << "Original tree (in order) : " << endl;
     printTree(root); // for init tree
     cout << endl;
     clock_t begin = clock(); // clock begin
-    runFunctions(functions); // run all the functions
+    runFunctions(); // run all the functions
     clock_t end = clock(); // clock stop
     cout << "Final tree (in order) : " << endl;
+    usleep(500);
     printTree(root);
     cout << endl;
     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;
