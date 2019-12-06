@@ -27,7 +27,8 @@ void* search(void* key);
 void* insert(void* key);
 void* deleteNode(void* key);
 void printTree(node* treeRoot);
-void runFunctions(string a);
+void runFunctions();
+void run_other_functions();
 
 
 /**
@@ -160,19 +161,12 @@ void runFunctions(){
         search_threads.push(pid);
         searches.pop();
     }
+}
 
-    const int size = search_threads.size();
-    for(int i=0;i<size;++i){
-        char* msg=NULL;
-        pthread_t pid = search_threads.front();
-        pthread_join(pid,(void**)&msg);
-        if(msg){
-            cout << msg << endl;
-        }
-        search_threads.pop();
-    }
-
-    if(searches.size()==0){
+/**
+ * run other functions besides the search
+ */
+void run_other_functions(){
         while(modifies.size()>0){
             pthread_t pid = modify_threads.front();
             if(modifies.front().function=="delete"){
@@ -186,15 +180,6 @@ void runFunctions(){
             modify_threads.push(pid);
             modifies.pop();
         }
-
-        const int size2 = modify_threads.size();
-        for(int i=0;i<size2;++i){
-            pthread_t pid = search_threads.front();
-            pthread_join(pid,NULL);
-            modify_threads.pop();
-        }
-    }
-
 }
 
 
@@ -224,23 +209,23 @@ void readfile(string path){
             }
             if(line!="" && count == 1){
                if(line[0]=='S'){
-                   smatch m;
-                   regex_search(line, m, regex("[0-9]+"));
-                   string temp = m.str(0);
-                   number_of_search_thread = stoi(temp);
-                   pthread_t tid[number_of_search_thread];
-                   for(int i=0;i<number_of_search_thread;++i){
-                       search_threads.push(tid[i]);
-                   }
+//                   smatch m;
+//                   regex_search(line, m, regex("[0-9]+"));
+//                   string temp = m.str(0);
+//                   number_of_search_thread = stoi(temp);
+//                   pthread_t tid[number_of_search_thread];
+//                   for(int i=0;i<number_of_search_thread;++i){
+//                       search_threads.push(tid[i]);
+//                   }
                }else{
-                   smatch m;
-                   regex_search(line, m, regex("[0-9]+"));
-                   string temp = m.str(0);
-                   number_of_modify_thread = stoi(temp);
-                   pthread_t tid[number_of_modify_thread];
-                   for(int i=0;i<number_of_modify_thread;++i){
-                       modify_threads.push(tid[i]);
-                   }
+//                   smatch m;
+//                   regex_search(line, m, regex("[0-9]+"));
+//                   string temp = m.str(0);
+//                   number_of_modify_thread = stoi(temp);
+//                   pthread_t tid[number_of_modify_thread];
+//                   for(int i=0;i<number_of_modify_thread;++i){
+//                       modify_threads.push(tid[i]);
+//                   }
                }
             }
             if(line!="" && count == 2){
@@ -269,8 +254,12 @@ void readfile(string path){
         c.key = stoi(tempCommands[i+1]);
         if(tempCommands[i]=="search"){
             searches.push(c);
+            pthread_t tid;
+            search_threads.push(tid);
         }else{
             modifies.push(c);
+            pthread_t tid;
+            modify_threads.push(tid);
         }
     }
 
@@ -288,7 +277,7 @@ void readfile(string path){
  */
 void* search(void* key) {
     int val = *(int*)key;
-    static bool found = false;
+    bool found = false;
     node *tempRoot = root;
     tempRoot->m.lock();
     if(tempRoot->key==-1){
@@ -296,38 +285,39 @@ void* search(void* key) {
         string f = "search(" ;
         string n = to_string(val);
         string f2 = ")-> false, performed by thread ";
-        string id = to_string(pthread_self()->__sig);
+        string id = to_string(long(pthread_self()));
         string output = f+n+f2+id;
         char* realOutput = strdup(output.c_str());
         return (realOutput);
-
-    }
+    }else{
     while(tempRoot->key!=-1 && found==false){
         node *parent = tempRoot;
         if(tempRoot->key==val){
-            tempRoot->m.unlock();
             string f = "search(" ;
             string n = to_string(val);
             string f2 = ")-> true, performed by thread ";
-            string id = to_string(pthread_self()->__sig);
+            string id = to_string(long(pthread_self()));
             string output = f+n+f2+id;
             char* realOutput = strdup(output.c_str());
+            found = true;
             return (realOutput);
         }else if(val>=tempRoot->key){
             tempRoot = tempRoot->right;
         }else{
             tempRoot = tempRoot->left;
         }
+
         tempRoot->m.lock();
         parent->m.unlock();
     }
-    tempRoot->m.unlock();
+    }
     string f = "search(" ;
     string n = to_string(val);
     string f2 = ")-> false, performed by thread ";
-    string id = to_string(pthread_self()->__sig);
+    string id = to_string(long(pthread_self()));
     string output = f+n+f2+id;
     char* realOutput = strdup(output.c_str());
+    tempRoot->m.unlock();
     return (realOutput);
 }
 
@@ -524,7 +514,7 @@ void* insert(void* key){
                     leftNode = tempNode->left;
                     rightNode = tempNode->right;
                     if(grandparent == root){
-                        grandparent->m.try_lock();
+                        grandparent->m.lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
@@ -587,9 +577,28 @@ int main()
     cout << endl;
     clock_t begin = clock(); // clock begin
     runFunctions(); // run all the functions
+    int size = search_threads.size();
+    for(int i=0;i<size;++i){
+        char* msg=(char*) malloc(sizeof(char)*200);
+        pthread_t pid = search_threads.front();
+        pthread_join(pid,(void**)&msg);
+        if(strncmp(msg,"",1)){
+            cout << msg << endl;
+        }
+        search_threads.pop();
+        free(msg);
+    }
+//    run_other_functions();
+//    int size2 = modify_threads.size();
+//    for(int j=0;j<size2;++j){
+//        pthread_t pid = modify_threads.front();
+//        pthread_join(pid,NULL);
+//        cout << j <<endl;
+//        modify_threads.pop();
+//    }
+
     clock_t end = clock(); // clock stop
     cout << "Final tree (in order) : " << endl;
-    usleep(500);
     printTree(root);
     cout << endl;
     double elapsed_secs = double(end - begin) / CLOCKS_PER_SEC;

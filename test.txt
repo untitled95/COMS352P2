@@ -3,4 +3,6 @@
 Search threads: 3
 Modify threads: 4
 
-search(10) || insert(15) || insert(5) || search(20)
+search(10) || delete(10) || insert(15) || insert(5) || search(20)
+
+ 
