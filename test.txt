@@ -1,8 +1,6 @@
 7b,3b,f,f,18r,10b,8r,f,f,11r,f,f,22b,f,26r,f,f
 
-Search threads: 3
-Modify threads: 4
+Search threads: 8
+Modify threads: 8
 
-search(10) || delete(10) || insert(15) || insert(5) || search(20)
-
- 
+insert(5) || insert (15) || insert(20) || insert(22)

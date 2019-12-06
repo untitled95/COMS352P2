@@ -194,8 +194,8 @@ void readfile(string path){
     ifstream file;
     file.open(path);
     int count = 0;
-    int number_of_search_thread = 0;
-    int number_of_modify_thread = 0;
+//    int number_of_search_thread = 0;
+//    int number_of_modify_thread = 0;
     if(file.is_open())
         while (!file.eof())
         {
@@ -207,6 +207,9 @@ void readfile(string path){
                 count += 1;
                 continue;
             }
+
+            // I tried to create all the threads first and found out on pyrite, sometime will cause dead lock.
+            // Therefore, I only create threads as needed later.
             if(line!="" && count == 1){
                if(line[0]=='S'){
 //                   smatch m;
@@ -259,7 +262,9 @@ void readfile(string path){
         }else{
             modifies.push(c);
             pthread_t tid;
-            modify_threads.push(tid);
+            if(tempCommands[i]=="delete" || tempCommands[i]=="insert") {
+                modify_threads.push(tid);
+            }
         }
     }
 
@@ -279,9 +284,7 @@ void* search(void* key) {
     int val = *(int*)key;
     bool found = false;
     node *tempRoot = root;
-    tempRoot->m.lock();
     if(tempRoot->key==-1){
-        tempRoot->m.unlock();
         string f = "search(" ;
         string n = to_string(val);
         string f2 = ")-> false, performed by thread ";
@@ -290,6 +293,8 @@ void* search(void* key) {
         char* realOutput = strdup(output.c_str());
         return (realOutput);
     }else{
+
+        tempRoot->m.lock();
     while(tempRoot->key!=-1 && found==false){
         node *parent = tempRoot;
         if(tempRoot->key==val){
@@ -300,6 +305,7 @@ void* search(void* key) {
             string output = f+n+f2+id;
             char* realOutput = strdup(output.c_str());
             found = true;
+            parent->m.unlock();
             return (realOutput);
         }else if(val>=tempRoot->key){
             tempRoot = tempRoot->right;
@@ -311,13 +317,13 @@ void* search(void* key) {
         parent->m.unlock();
     }
     }
+    tempRoot->m.unlock();
     string f = "search(" ;
     string n = to_string(val);
     string f2 = ")-> false, performed by thread ";
     string id = to_string(long(pthread_self()));
     string output = f+n+f2+id;
     char* realOutput = strdup(output.c_str());
-    tempRoot->m.unlock();
     return (realOutput);
 }
 
@@ -514,7 +520,7 @@ void* insert(void* key){
                     leftNode = tempNode->left;
                     rightNode = tempNode->right;
                     if(grandparent == root){
-                        grandparent->m.lock();
+                        grandparent->m.try_lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
@@ -559,7 +565,7 @@ void* insert(void* key){
     }
     root->color = false;
     locked->m.unlock();
-    return ((void*)&found);
+    return (NULL);
 }
 
 /**
@@ -588,14 +594,15 @@ int main()
         search_threads.pop();
         free(msg);
     }
-//    run_other_functions();
-//    int size2 = modify_threads.size();
-//    for(int j=0;j<size2;++j){
-//        pthread_t pid = modify_threads.front();
-//        pthread_join(pid,NULL);
-//        cout << j <<endl;
-//        modify_threads.pop();
-//    }
+    run_other_functions();
+    int size2 = modify_threads.size();
+    for(int j=0;j<size2;++j){
+        char* msg=(char*) malloc(sizeof(char)*200);
+        pthread_t pid = modify_threads.front();
+        pthread_join(pid,(void**)&msg);
+        modify_threads.pop();
+        free(msg);
+    }
 
     clock_t end = clock(); // clock stop
     cout << "Final tree (in order) : " << endl;
