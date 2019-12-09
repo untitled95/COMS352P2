@@ -10,9 +10,12 @@
 
 
 #include <unistd.h>
+#include <thread>
+#include <shared_mutex>
+
 /**
  * @author yiming ling
- * wrote based on the original request
+ * wrote based on the extra credit request
  */
 
 using namespace std;
@@ -25,12 +28,14 @@ node* initTree(vector<node*> pre);
 void readfile(string path);
 void* search(void* key);
 void* insert(void* key);
-void* deleteNode(void* key);
 void printTree(node* treeRoot);
 void runFunctions();
 void run_other_functions();
-
-
+void leftrotate(node *x);
+void rightrotate(node *x);
+void* deleteNode(void *key);
+void rbTransplant(node* u, node* v);
+void delfix(node *x);
 /**
  * node structure
  */
@@ -41,7 +46,7 @@ void run_other_functions();
      struct node *right;
      struct node *parent;
      bool color;  //false:black true:red
-     mutex m;
+     recursive_mutex m;
  };
 
 
@@ -327,63 +332,82 @@ void* search(void* key) {
     return (realOutput);
 }
 
-void* deleteNode(void* key){
-    return NULL;
-}
 
 /**
  * Insert function with lock
  * @param key
  * @return
  */
+mutex p;
+//vector<node*> m;
+//vector<node*> n;
+
 void* insert(void* key){
     int val = *(int*)key;
-    free(key);
     bool found = false;
     node *tempNode = root;
+
     tempNode->m.lock();
+
+//    m.push_back(tempNode);
     node *locked = tempNode;
-    while(tempNode->key!=-1 && found==false){
+
+    while(tempNode->key!=-1 && !found){
         node *parent = tempNode;
-        if(val == tempNode->key){
+        if(tempNode->key==val){
             found = true;
-        }else if(val < tempNode->key){
+        }
+        else if(val < tempNode->key){
             tempNode = tempNode->left;
+
         }else{
             tempNode = tempNode->right;
         }
-        if(tempNode->color==false && parent->color ==false && parent!=locked){
+        if((tempNode->color==false) && (parent->color ==false) && (parent!=locked)){
             parent->m.lock();
+//            m.push_back(parent);
             locked->m.unlock();
+//            n.push_back(locked);
             locked = parent;
         }
     }
+
     if(found==false){
         tempNode->m.lock();
+//        m.push_back(tempNode);
+
         tempNode->color = true;
         tempNode->key = val;
         node *leftNode = new node;
 
         leftNode->key = -1;
-        leftNode->left = NULL;
-        leftNode->right = NULL;
+        leftNode->left = nullptr;
+        leftNode->right = nullptr;
         leftNode->parent = tempNode;
         leftNode->color = false;
-
-        tempNode->left = leftNode;
 
         node *rightNode = new node;
 
         rightNode->key = -1;
-        rightNode->left = NULL;
-        rightNode->right = NULL;
+        rightNode->left = nullptr;
+        rightNode->right = nullptr;
         rightNode->parent = tempNode;
         rightNode->color = false;
 
+        tempNode->left = leftNode;
+        leftNode->parent = tempNode;
+
         tempNode->right = rightNode;
+        rightNode->parent=tempNode;
+
         tempNode->m.unlock();
+//        n.push_back(tempNode);
 
         while(tempNode!=root && tempNode->parent->color == true){
+
+//            vector<node*> aaa = m;
+//            vector<node*> bbb = n;
+
             node *parent = tempNode->parent;
             node *grandparent = parent->parent;
             if(parent == grandparent->left){
@@ -399,77 +423,158 @@ void* insert(void* key){
                     grandparent->color = true;
                     node *sister = parent->right;
                     if(grandparent==root){
+
                         grandparent->m.lock();
                         parent->m.lock();
                         sister->m.lock();
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(sister);
                         root = parent;
                         parent->right = grandparent;
-                        parent->left = sister;
+                        grandparent->parent = parent;
+
+                        grandparent->left = sister;
+                        sister->parent=grandparent;
+
                         sister->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
+//                        n.push_back(sister);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+
                     }else{
                         node *grandgrandparent = grandparent->parent;
+
                         grandgrandparent->m.lock();
                         grandparent->m.lock();
                         parent->m.lock();
                         sister->m.lock();
+
+//                        m.push_back(grandgrandparent);
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(sister);
+
                         if(grandgrandparent->left == grandparent){
-                            grandgrandparent->left = grandparent;
+                            grandgrandparent->left = parent;
+                            parent->parent = grandgrandparent;
                         }else{
-                            grandgrandparent->right = grandparent;
+                            grandgrandparent->right = parent;
+                            parent->parent = grandgrandparent;
                         }
                         parent->right = grandparent;
+                        grandparent->parent = parent;
+
                         grandparent->left = sister;
+                        sister->parent = grandparent;
+
                         sister->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
                         grandgrandparent->m.unlock();
+
+//                        n.push_back(sister);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+//                        n.push_back(grandgrandparent);
+
                     }
                 }
-                else{
+                else {
                     tempNode->color = false;
                     grandparent->color = true;
                     leftNode = tempNode->left;
                     rightNode = tempNode->right;
-                    if(grandparent==root){
+                    if (grandparent == root) {
+
                         grandparent->m.lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
                         rightNode->m.lock();
+
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(tempNode);
+//                        m.push_back(leftNode);
+//                        m.push_back(rightNode);
+
                         root = tempNode;
                         tempNode->left = parent;
+                        parent->parent = tempNode;
+
                         tempNode->right = grandparent;
+                        grandparent->parent = tempNode;
+
                         parent->right = leftNode;
-                        grandparent->left=rightNode;
+                        leftNode->parent = parent;
+
+                        grandparent->left = rightNode;
+                        rightNode->parent = grandparent;
+
                         rightNode->m.unlock();
                         leftNode->m.unlock();
                         tempNode->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
-                    }else{
+
+//                        n.push_back(rightNode);
+//                        n.push_back(leftNode);
+//                        n.push_back(tempNode);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+
+                    } else {
                         node *grandgrandparent = grandparent->parent;
+
                         grandgrandparent->m.lock();
                         grandparent->m.lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
                         rightNode->m.lock();
-                        if(grandgrandparent->left == grandparent){
+
+//                        m.push_back(grandgrandparent);
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(tempNode);
+//                        m.push_back(leftNode);
+//                        m.push_back(rightNode);
+
+                        if (grandgrandparent->left == grandparent) {
                             grandgrandparent->left = tempNode;
-                        }else{
+                            tempNode->parent = grandgrandparent;
+                        } else {
                             grandgrandparent->right = tempNode;
+                            tempNode->parent = grandgrandparent;
                         }
                         tempNode->left = parent;
+                        parent->parent = tempNode;
+
                         tempNode->right = grandparent;
+                        grandparent->parent = tempNode;
+
                         parent->right = leftNode;
+                        leftNode->parent = parent;
+
                         grandparent->left = rightNode;
+                        rightNode->parent = grandparent;
+
                         rightNode->m.unlock();
                         leftNode->m.unlock();
                         tempNode->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
+                        grandgrandparent->m.unlock();
+
+//                        n.push_back(rightNode);
+//                        n.push_back(leftNode);
+//                        n.push_back(tempNode);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+//                        n.push_back(grandgrandparent);
                     }
                 }
             }else{
@@ -485,33 +590,66 @@ void* insert(void* key){
                     grandparent->color = true;
                     node *sister = parent->left;
                     if(grandparent==root){
+
                         grandparent->m.lock();
                         parent->m.lock();
                         sister->m.lock();
+
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(sister);
+
                         root = parent;
                         parent->left = grandparent;
+                        grandparent->parent = parent;
+
                         grandparent->right = sister;
+                        sister->parent = grandparent;
+
                         sister->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
+
+//                        n.push_back(sister);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
                     }
                     else{
                         node *grandgrandparent = grandparent->parent;
+
                         grandgrandparent->m.lock();
                         grandparent->m.lock();
                         parent->m.lock();
                         sister->m.lock();
+
+//                        m.push_back(grandgrandparent);
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(sister);
+
                         if(grandgrandparent->left==grandparent){
                             grandgrandparent->left = parent;
+                            parent->parent = grandgrandparent;
                         }else{
                             grandgrandparent->right = parent;
+                            parent->parent = grandgrandparent;
                         }
                         parent->left = grandparent;
+                        grandparent->parent = parent;
+
                         grandparent->right = sister;
+                        sister->parent = grandparent;
+
                         sister->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
                         grandgrandparent->m.unlock();
+
+//                        n.push_back(sister);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+//                        n.push_back(grandgrandparent);
+
                     }
                 }
                 else{
@@ -520,21 +658,44 @@ void* insert(void* key){
                     leftNode = tempNode->left;
                     rightNode = tempNode->right;
                     if(grandparent == root){
-                        grandparent->m.try_lock();
+
+                        grandparent->m.lock();
                         parent->m.lock();
                         tempNode->m.lock();
                         leftNode->m.lock();
                         rightNode->m.lock();
+
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(tempNode);
+//                        m.push_back(leftNode);
+//                        m.push_back(rightNode);
+
                         root = tempNode;
                         tempNode->right = parent;
+                        parent->parent = tempNode;
+
                         tempNode->left = grandparent;
+                        grandparent->parent = tempNode;
+
                         parent->left = rightNode;
+                        rightNode->parent = parent;
+
                         grandparent->right = leftNode;
+                        leftNode->parent = grandparent;
+
                         rightNode->m.unlock();
                         leftNode->m.unlock();
                         tempNode->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
+
+//                        n.push_back(rightNode);
+//                        n.push_back(leftNode);
+//                        n.push_back(tempNode);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+
                     }else{
                         node *grandgrandparent = grandparent->parent;
                         grandgrandparent->m.lock();
@@ -543,21 +704,47 @@ void* insert(void* key){
                         tempNode->m.lock();
                         leftNode->m.lock();
                         rightNode->m.lock();
+
+//                        m.push_back(grandgrandparent);
+//                        m.push_back(grandparent);
+//                        m.push_back(parent);
+//                        m.push_back(tempNode);
+//                        m.push_back(leftNode);
+//                        m.push_back(rightNode);
+
                         if(grandgrandparent->left == grandparent){
                             grandgrandparent->left = tempNode;
+                            tempNode->parent = grandgrandparent;
                         }else{
                             grandgrandparent->right = tempNode;
+                            tempNode->parent = grandgrandparent;
                         }
                         tempNode->right = parent;
+                        parent->parent = tempNode;
+
                         tempNode->left = grandparent;
+                        grandparent->parent = tempNode;
+
                         parent->left = rightNode;
+                        rightNode->parent = parent;
+
                         grandparent->right = leftNode;
+                        leftNode->parent = grandparent;
+
                         rightNode->m.unlock();
                         leftNode->m.unlock();
                         tempNode->m.unlock();
                         parent->m.unlock();
                         grandparent->m.unlock();
                         grandgrandparent->m.unlock();
+
+//                        n.push_back(rightNode);
+//                        n.push_back(leftNode);
+//                        n.push_back(tempNode);
+//                        n.push_back(parent);
+//                        n.push_back(grandparent);
+//                        n.push_back(grandgrandparent);
+
                     }
                 }
             }
@@ -565,6 +752,7 @@ void* insert(void* key){
     }
     root->color = false;
     locked->m.unlock();
+//    n.push_back(locked);
     return (NULL);
 }
 
@@ -592,16 +780,14 @@ int main()
             cout << msg << endl;
         }
         search_threads.pop();
-        free(msg);
+//        free(msg);
     }
     run_other_functions();
     int size2 = modify_threads.size();
     for(int j=0;j<size2;++j){
-        char* msg=(char*) malloc(sizeof(char)*200);
         pthread_t pid = modify_threads.front();
-        pthread_join(pid,(void**)&msg);
+        pthread_join(pid,NULL);
         modify_threads.pop();
-        free(msg);
     }
 
     clock_t end = clock(); // clock stop
@@ -635,4 +821,364 @@ void printTree(node* treeRoot){
     }
     printTree(treeRoot->left);
     printTree(treeRoot->right);
+}
+
+
+mutex modifyMutex;
+/**
+ * delete Node main function
+ * @param key
+ * @return
+ */
+void *deleteNode(void *key)
+{
+    int val =  *(int*)key;
+    if(root->key==-1) //root is nil
+    {
+        return (NULL);
+    }
+    node *z = root;
+    node *x = nullptr;
+    bool found = false;
+    z->m.lock();
+    while(z->key!=-1 && found == false)
+    {
+        node* parentNode = z;
+        if(z->key == val)
+            found = true;
+        if(found == false)
+        {
+            if(z->key < val)
+                z = z->right;
+            else
+                z = z->left;
+        }
+        if (parentNode->key!=-1) {
+            parentNode->m.unlock();
+        }
+        if (!found && z->key!=-1) {
+            z->m.lock();
+        }
+    }
+    if (z->key!=-1 && !found) {
+        z->m.unlock();
+    }
+    if(found == false)
+    {
+        return (NULL);
+    }
+    else
+    {
+        modifyMutex.lock();
+        node* y = z;
+        node* node5 = z->parent;
+        if (node5 != nullptr && node5->key!=-1) {
+            node5->m.lock();
+        }
+        node* node1 = y->parent->left;
+        if (node1 != nullptr && node1->key!=-1) {
+            node1->m.lock();
+        }
+        node* node2 = y->parent->right;
+        if (node2 != nullptr && node2->key!=-1) {
+            node2->m.lock();
+        }
+        node* node3 = z->right;
+        if (node3 != nullptr && node3->key!=-1) {
+            node3->m.lock();
+        }
+        node* node4 = z->left;
+        if (node4 != nullptr && node4->key!=-1){
+            node4->m.lock();
+        }
+        //delMutex.unlock();
+        modifyMutex.unlock();
+        node* node6 = nullptr;
+        node* node7 = nullptr;
+        node* node8 = nullptr;
+        node* node9 = nullptr;
+        // old function
+        bool y_original_color = y->color;
+        if (z->left->key==-1){
+            x = z->right;
+            rbTransplant(z,z->right);
+
+        }
+        else if (z->right->key==-1){
+            x = z->left;
+            rbTransplant(z,z->left);
+        }
+        else{
+            node* p = z->right; // p is node3
+            while (p->left->key!=-1){
+                node* parentNode = p;
+                p = p->left;
+                if (parentNode->key!=-1 && parentNode != node3) {
+                    parentNode->m.unlock();
+                }
+                if(p->key!=-1) {
+                    p->m.lock();
+                }
+            }
+
+            y = p; // has locked
+            node9 = p;
+            node6 = y->left;
+            if (node6 != nullptr  && node6->key!=-1) {
+                node6->m.lock();
+            }
+            node7 = y->right; // = x
+            if (node7 != nullptr && node7->key!=-1) {
+                node7->m.lock();
+            }
+            bool unlockMutex = false;
+            y_original_color = y->color;
+            x = y->right;
+            if (y->parent == z)
+                x->parent = y;
+            else{
+                node8 = y->parent;
+                if (node8 != nullptr && node8->key!=-1 && node8 != node3) {
+                    node8->m.lock();
+
+                }
+
+                rbTransplant(y,y->right);
+                y->right = z->right;
+                y->right->parent = y;
+            }
+
+            rbTransplant(z,y);
+            y->left = z->left;
+            y->left->parent = y;
+            y->color = z->color;
+        }
+        if(y_original_color == false)
+            delfix(x); // x has lock
+        //delMutex.lock();
+        //printMutex.lock();
+        if (node5 != nullptr && node5->key!=-1) {
+            node5->m.unlock();
+        }
+        if (node1 != nullptr && node1->key!=-1){
+            node1->m.unlock();
+        }
+        if (node2 != nullptr && node2->key!=-1) {
+            node2->m.unlock();
+        }
+        if (node3 != nullptr && node3->key!=-1) {
+            node3->m.unlock();
+        }
+        if (node4 != nullptr && node4->key!=-1) {
+            node4->m.unlock();
+        }
+        if (node6 != nullptr && node6->key!=-1) {
+            node6->m.unlock();
+        }
+        if (node7 != nullptr && node7->key!=-1) {
+           node7->m.unlock();
+        }
+        if (node8 != nullptr && node8->key!=-1){
+           node8->m.unlock();
+
+        }
+        if (node9 != nullptr && node9->key!=-1){
+           node9->m.unlock();
+        }
+    }
+
+    return (NULL);
+
+}
+
+/**
+ * delete helper function
+ * @param x
+ */
+void leftrotate(node *x)
+{
+    if(x->right->key==-1)
+        return ;
+    else
+    {
+        node *y = x->right;
+        x->right = y->left;
+        if(y->left->key!=-1)
+        {
+            y->left->parent = x;
+        }
+        y->parent = x->parent;
+        if(x->parent->key==-1)
+            root = y;
+        else
+        {
+            if(x == x->parent->left)
+                x->parent->left = y;
+            else
+                x->parent->right = y;
+        }
+        y->left = x;
+        x->parent = y;
+    }
+}
+
+/**
+ * delete helper function
+ * @param x
+ */
+void rightrotate(node *x)
+{
+    if(x->left->key==-1)
+        return ;
+    else
+    {
+        node *y = x->left;
+        x->left = y->right;
+        if(y->right->key!=-1)
+        {
+            y->right->parent = x;
+        }
+        y->parent=x->parent;
+        if(x->parent->key==-1)
+            root = y;
+        else
+        {
+            if(x == x->parent->left)
+                x->parent->left = y;
+            else
+                x->parent->right = y;
+        }
+        y->right = x;
+        x->parent = y;
+    }
+}
+
+/**
+ * delete help function
+ * @param u
+ * @param v
+ */
+void rbTransplant(node* u, node* v){
+    if (u->parent->key==-1){
+        root = v;
+    }
+    else if (u == u->parent->left){
+        u->parent->left = v;
+    }
+    else{
+        u->parent->right = v;
+    }
+    v->parent = u->parent;
+}
+
+
+/**
+ * delete helper function
+ * @param x
+ */
+void delfix(node *x)
+{
+    node *w;
+    node* node1 = nullptr;
+    node* node2 = nullptr;
+    while(x != root && x->color == false)
+    {
+        if(x->parent->left == x)
+        {
+            w=x->parent->right;
+            //delMutex.lock();
+            node1 = w->left;
+            if (node1 != nullptr && node1->key!=-1) {
+               node1->m.lock();
+
+                node2 = w->left->right;
+                if (node2 != nullptr && node2->key!=-1) {
+                    node2->m.lock();
+                }
+            }
+
+            if(w->color== true)
+            {
+                w->color = false;
+                x->parent->color = true;
+                leftrotate(x->parent);
+                w = x->parent->right;
+            }
+            if(w->left != nullptr && w->right != nullptr && w->left->color ==false && w->right->color == false )
+            {
+                w->color = true;
+                x = x->parent;
+            }
+            else
+            {
+                if(w->right != nullptr && w->right->color == false)
+                {
+                    w->left->color = false;
+                    w->color = true;
+                    rightrotate(w);
+                    w = x->parent->right;
+                }
+                w->color = x->parent->color;
+                x->parent->color = false;
+                if (w->right != nullptr)
+                    w->right->color = false;
+                leftrotate(x->parent);
+                x=root;
+            }
+        }
+        else
+        {
+            w=x->parent->left;
+            //delMutex.lock();
+            node1 = w->right;
+            if (node1 != nullptr && node1->key!=-1) {
+                node1->m.lock();
+
+                node2 = w->right->left;
+                if (node2 != nullptr && node2->key!=-1) {
+                    node2->m.lock();
+                }
+            }
+            //delMutex.unlock();
+            if(w->color == true)
+            {
+                w->color = false;
+                x->parent->color = true;
+                rightrotate(x->parent);
+                w=x->parent->left;
+            }
+            if(w->left != nullptr && w->right != nullptr && w->left->color == false && w->right->color == false)
+            {
+                w->color = true;
+                x = x->parent;
+            }
+            else
+            {
+                if(w->left != nullptr && w->left->color == false)
+                {
+                    w->right->color = false;
+                    w->color = true;
+                    leftrotate(w);
+                    w=x->parent->left;
+                }
+                w->color = x->parent->color;
+                x->parent->color = false;
+                if (w->left != nullptr)
+                    w->left->color = false;
+                rightrotate(x->parent);
+                x=root;
+            }
+        }
+        x->color = false;
+        root->color= false;
+        //delMutex.lock();
+        if (node1 != nullptr && node1->key!=-1) {
+            node1->m.unlock();
+        }
+        if (node2 != nullptr && node2->key!=-1) {
+           node2->m.unlock();
+
+        }
+        //delMutex.unlock();
+    }
 }
